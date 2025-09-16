@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live AI Disaster Command Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background-color: #141414; color: #ffffff; }
+        header { 
+            padding: 1rem 3rem; 
+            display: flex; 
+            align-items: center; 
+            justify-content: space-between; 
+            gap: 2rem;
+            background: linear-gradient(to bottom, rgba(20, 20, 20, 0.9), rgba(20, 20, 20, 0)); 
+            position: fixed; 
+            width: 100%; 
+            top: 0; 
+            z-index: 1000;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+        .logo { font-size: 1.8rem; font-weight: 900; color: #E50914; letter-spacing: -1px; flex-shrink: 0; }
+        .header-buttons { display: flex; gap: 1.5rem; flex-shrink: 0; }
+        .hero { height: 60vh; position: relative; display: flex; align-items: flex-end; }
+        #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 1; filter: brightness(0.8); }
+        .hero-overlay { background: linear-gradient(to top, rgba(20, 20, 20, 1) 15%, rgba(20, 20, 20, 0)); position: absolute; bottom: 0; left: 0; width: 100%; height: 60%; z-index: 2; pointer-events: none; }
+        .hero-content { position: relative; z-index: 3; padding: 2rem 3rem; width: 100%; }
+        #weatherLocation { font-size: 2.5rem; font-weight: 700; margin-bottom: 0.5rem; text-shadow: 2px 2px 4px rgba(0,0,0,0.7); }
+        .weather-details { display: flex; align-items: center; gap: 1.5rem; font-size: 1.2rem; font-weight: 500; margin-bottom: 1.5rem; }
+        .info-bar { display: flex; gap: 1.5rem; flex-wrap: wrap; align-items: center; }
+        .helpline-item { background-color: rgba(40, 40, 40, 0.8); padding: 0.5rem 1rem; border-radius: 8px; border-left: 3px solid #E50914; }
+        .helpline-title { font-size: 0.8rem; color: #aaa; text-transform: uppercase; }
+        .helpline-number { font-size: 1.1rem; font-weight: 600; }
+        .content-rows { padding: 80px 3rem 3rem 3rem; }
+        .row { margin-bottom: 2rem; }
+        .row-title { 
+            font-size: 1.4rem; 
+            font-weight: 700; 
+            text-transform: uppercase; 
+            margin-bottom: 0.5rem; 
+            letter-spacing: 1px;
+        }
+        .row-inner { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(340px, 1fr); gap: 1.5rem; overflow-x: auto; padding: 1rem 0; scrollbar-width: thin; scrollbar-color: #333 #141414; }
+        .row-inner::-webkit-scrollbar { height: 8px; }
+        .row-inner::-webkit-scrollbar-thumb { background-color: #333; border-radius: 4px; }
+        .row-inner::-webkit-scrollbar-track { background: transparent; }
+        .tile { background-color: #282828; border-radius: 8px; cursor: pointer; transition: transform 0.2s ease-out, box-shadow 0.2s ease-out; display: flex; flex-direction: column; justify-content: space-between; padding: 1rem; border: 2px solid transparent; position: relative; overflow: hidden; min-height: 170px; gap: 0.5rem; }
+        .tile:hover { transform: scale(1.05); z-index: 10; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .tile-icon { font-size: 3rem; position: absolute; top: 1rem; right: 1rem; opacity: 0.15; }
+        .tile-body { position: relative; z-index: 2; display: flex; flex-direction: column; justify-content: space-between; flex-grow: 1; }
+        
+        .tile-title, .tile-desc {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: -webkit-box;
+            -webkit-box-orient: vertical;
+        }
+        .tile-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            line-height: 1.3;
+            -webkit-line-clamp: 2;
+        }
+        .tile-desc {
+            font-size: 0.85rem;
+            color: #aaa;
+            line-height: 1.4;
+            margin-top: 4px;
+            -webkit-line-clamp: 2;
+        }
+
+        /* --- UPDATED: Tag positioning removed --- */
+        .tag { 
+            font-size: 0.8rem; 
+            padding: 3px 10px; 
+            border-radius: 20px; 
+            font-weight: 600; 
+            color: #fff; 
+            display: inline-block;
+        }
+        .tag-red { background-color: #E50914; } .tag-orange { background-color: #ffab00; color: #141414; } .tag-blue { background-color: #0077cc; }
+        .tile-prediction { border-left: 5px solid #E50914; } .tile-alert { border-left: 5px solid #ffab00; } .tile-resource { border-left: 5px solid #4caf50; } .tile-watch { border-left: 5px solid #0077cc; }
+        .alert-button, .radio-button, .feedback-button, .ambulance-button, .fire-service-button { border: none; border-radius: 5px; padding: 0.5rem 1rem; font-weight: 700; cursor: pointer; transition: background-color 0.2s; font-family: 'Inter', sans-serif; font-size: 1rem; }
+        .alert-button { background-color: #E50914; color: white; }
+        .alert-button:hover { background-color: #f61a25; }
+        .radio-button { background-color: #3f51b5; color: white; }
+        .radio-button:hover { background-color: #5c6bc0; }
+        .feedback-button { background-color: #4caf50; color: white; }
+        .feedback-button:hover { background-color: #66bb6a; }
+        .modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.8); backdrop-filter: blur(5px); }
+        .modal-content { background-color: #1f1f1f; margin: 10% auto; padding: 2rem; border: 1px solid #333; width: 80%; max-width: 500px; border-radius: 8px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+        .modal-header h2 { font-size: 1.5rem; }
+        .close-button { color: #aaa; font-size: 2rem; font-weight: bold; cursor: pointer; }
+        .close-button:hover { color: white; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; font-weight: 500; color: #aaa; }
+        .form-group input, .form-group select, .form-group textarea { width: 100%; background-color: #333; border: 1px solid #555; color: white; padding: 0.75rem; border-radius: 5px; font-size: 1rem; }
+        .form-group textarea { resize: vertical; min-height: 200px; }
+        .radio-panel { position: fixed; top: 100px; right: 3rem; width: 350px; background-color: #1f1f1f; border-radius: 8px; border: 1px solid #333; z-index: 1500; overflow: hidden; display: none; box-shadow: 0 10px 30px rgba(0,0,0,0.5); max-height: 70vh; flex-direction: column; }
+        .radio-panel.show { display: flex; }
+        .radio-header { padding: 0.75rem 1rem; background-color: #282828; display: flex; justify-content: space-between; align-items: center; }
+        .radio-header h4 { margin: 0; font-size: 1rem; }
+        .radio-status { font-weight: 600; font-size: 0.9rem; }
+        .status-offline { color: #aaa; }
+        .status-online { color: #4caf50; }
+        .status-playing { color: #ffab00; }
+        .status-loading { color: #0077cc; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+        .radio-body { padding: 0; font-size: 0.9rem; color: #ccc; flex-grow: 1; overflow-y: auto; }
+        .radio-now-playing { padding: 0.5rem 1rem; font-size: 0.8rem; background-color: #141414; text-align: center; font-style: italic; }
+        .radio-station-list { list-style: none; padding: 0; margin: 0; }
+        .station-item { padding: 0.75rem 1rem; border-bottom: 1px solid #333; cursor: pointer; transition: background-color 0.2s; }
+        .station-item:hover { background-color: #444; }
+        .station-item:last-child { border-bottom: none; }
+        .station-name { font-weight: 600; }
+        .station-tags { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
+        .radio-controls { padding: 1rem; border-top: 1px solid #333; }
+        .radio-control-btn { width: 100%; padding: 0.6rem; background-color: #E50914; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; transition: background-color 0.2s; }
+        .radio-control-btn:hover { background-color: #f61a25; }
+        .search-container { flex-grow: 1; display: flex; justify-content: center; }
+        #locationSearchForm { display: flex; width: 100%; max-width: 500px; }
+        #locationSearchInput { width: 100%; background-color: #333; border: 1px solid #555; color: white; padding: 0.6rem 1rem; border-radius: 5px 0 0 5px; font-size: 1rem; border-right: none; }
+        #locationSearchInput:focus { outline: none; border-color: #E50914; }
+        #locationSearchForm button { border: 1px solid #555; border-radius: 0 5px 5px 0; padding: 0.6rem 1rem; font-weight: 700; cursor: pointer; transition: background-color 0.2s; font-family: 'Inter', sans-serif; font-size: 1rem; background-color: #E50914; color: white; }
+        .disaster-selector-item { display: flex; align-items: center; gap: 1rem; background-color: rgba(40, 40, 40, 0.8); padding: 0.5rem 1rem; border-radius: 8px; border-left: 3px solid #0077cc; }
+        .disaster-selector-item select { background-color: #333; color: white; border: 1px solid #555; border-radius: 4px; padding: 0.25rem; font-family: 'Inter', sans-serif; font-size: 1rem; }
+        #disasterProbabilityResult { font-size: 1.1rem; font-weight: 700; }
+        .risk-low { color: #4caf50; }
+        .risk-medium { color: #ffab00; }
+        .risk-high { color: #E50914; }
+        .ambulance-button { background-color: #0077cc; color: white; }
+        .ambulance-button:hover { background-color: #0088e6; }
+        .fire-service-button { background-color: #ff8f00; color: white; }
+        .fire-service-button:hover { background-color: #ffa000; }
+        #serviceModalBody p { margin-bottom: 0.5rem; font-size: 1.1rem;}
+        #serviceModalBody h4 { margin-top: 1rem; margin-bottom: 0.5rem; text-transform: uppercase; color: #aaa; font-size: 0.9rem;}
+        .resource-status-item { display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; }
+        .tile-location { font-weight: 400; color: #ccc; font-size: 1rem; }
+        .tile-eta { font-size: 0.9rem; color: #ffab00; }
+        #openChatbotBtn { position: fixed; bottom: 2rem; right: 2rem; width: 60px; height: 60px; background-color: #E50914; color: white; border-radius: 50%; border: none; font-size: 2rem; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 1900; box-shadow: 0 5px 15px rgba(0,0,0,0.5); }
+        #chatbotContainer { display: none; position: fixed; bottom: 6.5rem; right: 2rem; width: 350px; height: 450px; background-color: #1f1f1f; border-radius: 10px; border: 1px solid #333; box-shadow: 0 5px 20px rgba(0,0,0,0.6); z-index: 1800; flex-direction: column; }
+        #chatbotContainer.show { display: flex; }
+        .chatbot-header { padding: 0.75rem 1rem; background-color: #282828; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; border-radius: 10px 10px 0 0; }
+        .chatbot-header h4 { margin: 0; }
+        .chatbot-close { font-size: 1.5rem; cursor: pointer; }
+        #chatbotMessages { flex-grow: 1; padding: 1rem; overflow-y: auto; }
+        #chatbotForm { display: flex; border-top: 1px solid #333; }
+        #chatbotInput { flex-grow: 1; background-color: #333; border: none; color: white; padding: 0.75rem; font-size: 1rem; }
+        #chatbotInput:focus { outline: none; }
+        #chatbotForm button { background-color: #E50914; border: none; color: white; padding: 0 1rem; font-size: 1.2rem; cursor: pointer; }
+        .chat-message { max-width: 80%; padding: 0.5rem 0.75rem; border-radius: 15px; margin-bottom: 0.75rem; line-height: 1.4; word-wrap: break-word; }
+        .chat-message.user { background-color: #0077cc; color: white; margin-left: auto; border-bottom-right-radius: 3px; }
+        .chat-message.bot { background-color: #333; color: white; margin-right: auto; border-bottom-left-radius: 3px; }
+        .site-footer { background-color: #1f1f1f; color: #aaa; text-align: center; padding: 1.5rem 3rem; border-top: 1px solid #333; font-size: 0.9rem; }
+        .footer-content { max-width: 800px; margin: 0 auto; }
+        .footer-content p { margin: 0.25rem 0; }
+        .footer-content span { font-weight: 600; color: #fff; }
+
+        /* --- NEW: Tile Footer --- */
+        .tile-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">🛡️ Project Suraksha</div>
+        <div class="search-container">
+            <form id="locationSearchForm">
+                <input type="text" id="locationSearchInput" placeholder="Search by City or Pincode...">
+                <button type="submit">Search</button>
+            </form>
+        </div>
+        <div class="header-buttons">
+            <button class="ambulance-button" id="ambulanceBtn">🚑 AMBULANCE</button>
+            <button class="fire-service-button" id="fireServiceBtn">🚒 FIRE SERVICE</button>
+            <button class="feedback-button" id="feedbackBtn">💬 FEEDBACK</button>
+            <button class="radio-button" id="toggleRadioBtn">📻 RADIO</button>
+            <button class="alert-button" id="sendAlertBtn">🚨 BROADCAST</button>
+        </div>
+    </header>
+
+    <div id="radioPanel" class="radio-panel">
+        <div class="radio-header">
+            <h4>Live Radio India</h4>
+            <span id="radioStatus" class="radio-status status-offline">● Offline</span>
+        </div>
+        <div class="radio-now-playing" id="radioNowPlaying">Select a station to play</div>
+        <div class="radio-body" id="radioStationList"></div>
+        <div class="radio-controls"><button id="stopRadioBtn" class="radio-control-btn">Stop Radio</button></div>
+        <audio id="radioAudio" preload="auto"></audio>
+    </div>
+
+    <div id="serviceModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="serviceModalTitle"></h2>
+                <span class="close-button" id="closeServiceModalBtn">&times;</span>
+            </div>
+            <div id="serviceModalBody"></div>
+        </div>
+    </div>
+
+    <div id="alertModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Broadcast New Alert</h2>
+                <span class="close-button" id="closeAlertModalBtn">&times;</span>
+            </div>
+            <form id="alertForm">
+                <div class="form-group"> <label for="alertTitle">Alert Title</label> <input type="text" id="alertTitle" required> </div>
+                <div class="form-group"> <label for="alertArea">Affected State</label> <select id="alertArea"> <option>Punjab</option><option>Maharashtra</option><option>Odisha</option><option>Uttarakhand</option><option>National</option> </select> </div>
+                <div class="form-group"> <label for="alertSeverity">Severity</label> <select id="alertSeverity"> <option>Critical</option><option>High</option><option>Moderate</option> </select> </div>
+                <div class="form-group"> <label for="alertMessage">Message</label> <textarea id="alertMessage" required></textarea> </div>
+                <button type="submit" class="alert-button" style="width: 100%; padding: 0.75rem;">Send Broadcast</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="feedbackModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Send Feedback</h2>
+                <span class="close-button" id="closeFeedbackModalBtn">&times;</span>
+            </div>
+            <form id="feedbackForm">
+                <div class="form-group"> <label for="feedbackName">Name (Optional)</label> <input type="text" id="feedbackName"> </div>
+                <div class="form-group"> <label for="feedbackEmail">Email (Optional)</label> <input type="email" id="feedbackEmail"> </div>
+                <div class="form-group"> <label for="feedbackMessage">Your Feedback</label> <textarea id="feedbackMessage" required></textarea> </div>
+                <button type="submit" class="feedback-button" style="width: 100%; padding: 0.75rem;">Submit Feedback</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="hero">
+        <div id="map"></div>
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+            <h1 id="weatherLocation">--</h1>
+            <div class="weather-details">
+                <span id="weatherTemp">--°C</span>
+                <span id="weatherIcon">☀️</span>
+                <span id="weatherHumidity">Humidity: --%</span>
+            </div>
+            <div class="info-bar">
+                <div id="helplineInfo"></div>
+                <div id="disasterSelectorContainer"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-rows">
+        <div class="row"> <h2 class="row-title">🇮🇳 NATIONAL 24-HOUR OUTLOOK</h2> <div class="row-inner" id="nationalWatch"></div> </div>
+        <div class="row"> <h2 class="row-title">🔴 LIVE HAZARD PREDICTIONS</h2> <div class="row-inner" id="hazardPredictions"></div> </div>
+        <div class="row"> <h2 class="row-title">🔄 LIVE PRIORITY ALERTS</h2> <div class="row-inner" id="realTimeAlerts"></div> </div>
+        <div class="row"> <h2 class="row-title">🎖️ NATIONAL & ARMED FORCES</h2> <div class="row-inner" id="armedForces"></div> </div>
+        <div class="row"> <h2 class="row-title">🚚 LOCAL RESOURCES</h2> <div class="row-inner" id="localResources"></div> </div>
+    </div>
+
+    <button id="openChatbotBtn">🤖</button>
+    <div id="chatbotContainer">
+        <div class="chatbot-header">
+            <h4>Suraksha Assistant</h4>
+            <span class="chatbot-close" id="closeChatbotBtn">&times;</span>
+        </div>
+        <div id="chatbotMessages"></div>
+        <form id="chatbotForm">
+            <input type="text" id="chatbotInput" placeholder="Ask for 'ndrf' or 'help'..." autocomplete="off">
+            <button type="submit">→</button>
+        </form>
+    </div>
+
+    <footer class="site-footer">
+        <div class="footer-content">
+            <p id="copyright"></p>
+            <p><span>Special Mention:</span> A project dedicated to enhancing disaster response and safety.</p>
+            <p><span>Created By:</span> Gladiator's</p>
+        </div>
+    </footer>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const map = L.map('map', { zoomControl: false }).setView([22.5937, 78.9629], 5);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', { attribution: '&copy; <a href="https://carto.com/attributions">CARTO</a>' }).addTo(map);
+        let currentMarker = null;
+
+        const weatherLocation = document.getElementById('weatherLocation');
+        const weatherTemp = document.getElementById('weatherTemp');
+        const weatherIcon = document.getElementById('weatherIcon');
+        const weatherHumidity = document.getElementById('weatherHumidity');
+        const helplineInfoDiv = document.getElementById('helplineInfo');
+        const hazardPredictionsDiv = document.getElementById('hazardPredictions');
+        const realTimeAlertsDiv = document.getElementById('realTimeAlerts');
+        const armedForcesDiv = document.getElementById('armedForces');
+        const localResourcesDiv = document.getElementById('localResources');
+        const nationalWatchDiv = document.getElementById('nationalWatch');
+        const alertModal = document.getElementById('alertModal');
+        const sendAlertBtn = document.getElementById('sendAlertBtn');
+        const closeAlertModalBtn = document.getElementById('closeAlertModalBtn');
+        const alertForm = document.getElementById('alertForm');
+        const feedbackModal = document.getElementById('feedbackModal');
+        const feedbackBtn = document.getElementById('feedbackBtn');
+        const closeFeedbackModalBtn = document.getElementById('closeFeedbackModalBtn');
+        const feedbackForm = document.getElementById('feedbackForm');
+        const disasterSelectorContainer = document.getElementById('disasterSelectorContainer');
+        const serviceModal = document.getElementById('serviceModal');
+        const serviceModalTitle = document.getElementById('serviceModalTitle');
+        const serviceModalBody = document.getElementById('serviceModalBody');
+        const closeServiceModalBtn = document.getElementById('closeServiceModalBtn');
+        const ambulanceBtn = document.getElementById('ambulanceBtn');
+        const fireServiceBtn = document.getElementById('fireServiceBtn');
+
+        const CITIES = [{ name: "Moga", state: "Punjab", lat: 30.8040, lon: 75.1691 }, { name: "Delhi", state: "Delhi", lat: 28.61, lon: 77.20 }, { name: "Mumbai", state: "Maharashtra", lat: 19.07, lon: 72.87 }, { name: "Kolkata", state: "West Bengal", lat: 22.57, lon: 88.36 }, { name: "Chennai", state: "Tamil Nadu", lat: 13.08, lon: 80.27 }, { name: "Dehradun", state: "Uttarakhand", lat: 30.31, lon: 78.03 }, { name: "Bhubaneswar", state: "Odisha", lat: 20.29, lon: 85.82 }, { name: "Guwahati", state: "Assam", lat: 26.14, lon: 91.73 }, { name: "Jaipur", state: "Rajasthan", lat: 26.91, lon: 75.78 }];
+        const STATE_HELPLINES = { "Punjab": { emergency: "112", health: "108", fire: "101", food: "1967", ndrf: "1078" }, "Delhi": { emergency: "112", health: "102", fire: "101", food: "1967", ndrf: "1078" }, "Maharashtra": { emergency: "112", health: "108", fire: "101", food: "1800224949", ndrf: "1078" }, "West Bengal": { emergency: "112", health: "102", fire: "101", food: "1967", ndrf: "1078" }, "Tamil Nadu": { emergency: "112", health: "108", fire: "101", food: "1913", ndrf: "1078" }, "Uttarakhand": { emergency: "112", health: "108", fire: "101", food: "1905", ndrf: "1078" }, "Odisha": { emergency: "112", health: "104", fire: "101", food: "1967", ndrf: "1078" }, "Assam": { emergency: "112", health: "108", fire: "101", food: "1967", ndrf: "1078" }, "Rajasthan": { emergency: "112", health: "108", fire: "101", food: "N/A", ndrf: "1078" }, "Default": { emergency: "112", health: "108", fire: "101", food: "N/A", ndrf: "1078" } };
+        const NATIONAL_WATCH_DATA = [ { location: "North Sikkim", hazard: "Flash Flood Warning", risk: "High", eta: "Next 12 Hrs", details: "Due to glacial lake outburst flood (GLOF) risk.", icon: "🌊" }, { location: "Kerala Coast", hazard: "High Swell Waves", risk: "Moderate", eta: "Next 48 Hrs", details: "Fishermen advised not to venture into the sea.", icon: "🌊" }, { location: "Uttarakhand Hills", hazard: "Landslide Alert", risk: "High", eta: "Immediate", details: "Triggered by continuous heavy rainfall.", icon: "⛰️" }, { location: "Rajasthan Desert", hazard: "Severe Heatwave", risk: "High", eta: "Next 72 Hrs", details: "Temperatures expected to exceed 45°C.", icon: "☀️" }, { location: "Sundarbans Delta", hazard: "Cyclone Path Prediction", risk: "Moderate", eta: "5-7 Days", details: "Low-pressure area forming in Bay of Bengal.", icon: "💨" }, { location: "Punjab & Haryana", hazard: "Thunderstorm & Hail", risk: "Low", eta: "Next 24 Hrs", details: "Western disturbance affecting the region.", icon: "⛈️" }, { location: "Forests of MP", hazard: "Wildfire Risk", risk: "Moderate", eta: "Ongoing", details: "Dry conditions and high winds increasing risk.", icon: "🔥" } ];
+        const LIVE_ALERT_POOL = [{ title: "High Winds Reported", desc: "Wind speeds exceeding 60km/h." }, { title: "Water Level Rising", desc: "River nearing danger mark." }, { title: "Seismic Activity", desc: "Minor tremors detected." }, { title: "Communication Line Down", desc: "Restoration in progress." }, { title: "Evacuation Prep", desc: "Teams on standby for coastal areas." }];
+
+        function getDisasterProbabilities(state) { const baseProbabilities = { Flood: 15, Earthquake: 20, Cyclone: 5, Landslide: 10, Heatwave: 30, Wildfire: 5 }; if (state === "Uttarakhand") { baseProbabilities.Landslide = 85; baseProbabilities.Flood = 60; } if (state === "Odisha" || state === "West Bengal") { baseProbabilities.Cyclone = 75; baseProbabilities.Flood = 65; } if (state === "Rajasthan") { baseProbabilities.Heatwave = 90; baseProbabilities.Earthquake = 25; } if (state === "Maharashtra") { baseProbabilities.Flood = 50; } if (state === "Assam") { baseProbabilities.Flood = 80; baseProbabilities.Earthquake = 65; } return baseProbabilities; }
+        function renderDisasterSelector(probabilities) { disasterSelectorContainer.innerHTML = ''; const selectorItem = document.createElement('div'); selectorItem.className = 'disaster-selector-item'; const title = document.createElement('div'); title.className = 'helpline-title'; title.textContent = 'DISASTER PROBABILITY'; const select = document.createElement('select'); select.id = 'disasterSelect'; for (const disaster in probabilities) { const option = document.createElement('option'); option.value = disaster; option.textContent = disaster; select.appendChild(option); } const resultDiv = document.createElement('div'); resultDiv.id = 'disasterProbabilityResult'; selectorItem.append(title, select, resultDiv); disasterSelectorContainer.appendChild(selectorItem); function updateProbability() { const selectedDisaster = select.value; const probability = probabilities[selectedDisaster]; resultDiv.textContent = `Risk: ${probability}%`; resultDiv.className = probability > 70 ? 'risk-high' : probability > 40 ? 'risk-medium' : 'risk-low'; } select.addEventListener('change', updateProbability); updateProbability(); }
+        function findNearestState(lat, lon) { let nearest = null, minDist = Infinity; CITIES.forEach(c => { const dist = Math.sqrt(Math.pow(c.lat - lat, 2) + Math.pow(c.lon - lon, 2)); if (dist < minDist) { minDist = dist; nearest = c; } }); return nearest ? nearest.state : "Default"; }
+        function updateHelplines(state) { const h = STATE_HELPLINES[state] || STATE_HELPLINES.Default; helplineInfoDiv.innerHTML = `<div class="helpline-item"><div class="helpline-title">State Emergency</div><div class="helpline-number">📞 ${h.emergency}</div></div><div class="helpline-item"><div class="helpline-title">NDRF Helpline</div><div class="helpline-number">🇮🇳 ${h.ndrf}</div></div><div class="helpline-item"><div class="helpline-title">Health / Ambulance</div><div class="helpline-number">🚑 ${h.health}</div></div><div class="helpline-item"><div class="helpline-title">Fire Service</div><div class="helpline-number">🚒 ${h.fire}</div></div>`; }
+        function generateDataForLocation(state, weatherCondition) { let p = [], a = [], af = [], lr = []; const isRainy = weatherCondition === 'rain' || weatherCondition === 'drizzle' || weatherCondition === 'storm'; const isHot = weatherCondition === 'clear'; if (state === "Uttarakhand") { p.push({ type: 'Landslide Warning', probability: 82, details: 'High risk in hilly areas' }); if (isRainy) a.push({ title: 'Red Alert: Heavy Rainfall', desc: 'Issued for Himalayan districts.' }); af.push({ name: 'Indian Army Column', status: 'En-Route' }); lr.push({ name: 'SDRF Unit', status: 'Available' }); } else if (state === "Odisha" || state === "West Bengal") { p.push({ type: 'Cyclone Formation', probability: 68, details: 'Bay of Bengal' }); a.push({ title: 'Cyclone Alert', desc: 'Pre-cyclone watch for coast.' }); af.push({ name: 'NDRF 10th Bn', status: 'Standby' }); af.push({ name: 'Air Force Helicopter', status: 'Available' }); } else if (state === "Maharashtra") { p.push({ type: 'Urban Flood Alert', probability: 75, details: 'Heavy monsoon showers' }); a.push({ title: 'Urban Flood Warning', desc: 'Low-lying areas at risk.' }); af.push({ name: 'Indian Navy Team', status: 'Standby' }); } else if (state === "Rajasthan") { p.push({ type: 'Extreme Heatwave', probability: 90, details: 'Temperatures expected to exceed 45°C.' }); a.push({ title: 'Heatwave Advisory', desc: 'Stay hydrated and indoors.' }); } else { p.push({ type: 'No Immediate Threat', probability: 20, details: 'Standard weather patterns.' }); } if (isRainy) a.push({ title: 'Lightning Advisory', desc: 'Seek shelter indoors.' }); if (isHot) a.push({ title: 'Heat Advisory', desc: 'Avoid prolonged sun exposure.' }); lr.push({ name: 'Local Ambulance', status: 'Available' }); lr.push({ name: 'Fire Services', status: 'Standby' }); if (af.length === 0) af.push({ name: 'NDRF Unit (Reserve)', status: 'Available' }); return { predictions: p, alerts: a, armedForces: af, localResources: lr }; }
+        function getWeatherIconFromCode(code) { if (code === 0) return "☀️"; if (code >= 1 && code <= 3) return "☁️"; if (code === 45 || code === 48) return "🌫️"; if (code >= 51 && code <= 67) return "🌧️"; if (code >= 80 && code <= 82) return "🌧️"; if (code >= 71 && code <= 77) return "❄️"; if (code === 95 || code === 96 || code === 99) return "⛈️"; return "☀️"; }
+        function getWeatherConditionFromCode(code) { if (code >= 51 && code <= 82) return "rain"; if (code === 0) return "clear"; return "default"; }
+        function createTile(className, innerHTML) { const tile = document.createElement('div'); tile.className = `tile ${className}`; tile.innerHTML = innerHTML; return tile; }
+        
+        // --- UPDATED: renderer.watch with new layout ---
+        const renderers = {
+            prediction: p => `<div class="tile-body"><div><div class="tile-title">${p.type}</div><div class="tile-desc">${p.details}</div></div> <div class="tile-footer"><span class="tag tag-red">${p.probability}% Risk</span></div></div><div class="tile-icon">🔮</div>`,
+            alert: a => `<div class="tile-body"><div><div class="tile-title">${a.title}</div><div class="tile-desc">${a.desc}</div></div> <div class="tile-footer"><span class="tag tag-orange">${a.title.includes("(Sent)") ? "MANUAL" : "SYSTEM"}</span></div></div><div class="tile-icon">🚨</div>`,
+            resource: r => { const icons = { 'NDRF': '🇮🇳', 'Army': '🎖️', 'Air Force': '✈️', 'Navy': '⚓', 'SDRF': '👥', 'Ambulance': '🚑', 'Fire': '🚒' }; const icon = Object.keys(icons).find(key => r.name.includes(key)) ? icons[Object.keys(icons).find(key => r.name.includes(key))] : '🚚'; return `<div class="tile-body"><div><div class="tile-title">${r.name}</div><div class="tile-desc">Ready for deployment</div></div> <div class="tile-footer"><span class="tag tag-blue">${r.status}</span></div></div><div class="tile-icon">${icon}</div>`; },
+            watch: w => {
+                const tagClass = w.risk === 'High' ? 'tag-red' : w.risk === 'Moderate' ? 'tag-orange' : 'tag-blue';
+                return `
+                    <div class="tile-icon">${w.icon}</div>
+                    <div class="tile-body">
+                        <div>
+                            <div class="tile-title">${w.hazard} <span class="tile-location">(${w.location})</span></div>
+                            <div class="tile-desc">${w.details}</div>
+                        </div>
+                        <div class="tile-footer">
+                           <span class="tag ${tagClass}">${w.risk} Risk</span>
+                           <div class="tile-eta">ETA: <strong>${w.eta}</strong></div>
+                        </div>
+                    </div>`;
+            }
+        };
+        
+        function populateRow(element, data, renderer, tileClass) { element.innerHTML = ''; data.forEach(itemData => element.appendChild(createTile(tileClass, renderer(itemData)))); }
+        async function fetchInfoForLocation(lat, lon, name = "Selected Area") { if (currentMarker) map.removeLayer(currentMarker); const icon = L.divIcon({ className: 'custom-map-marker', html: '📍', iconSize: [40, 40] }); currentMarker = L.marker([lat, lon], { icon }).addTo(map); map.flyTo([lat, lon], 7); try { const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,weather_code`; const response = await fetch(weatherUrl); if (!response.ok) { throw new Error('Weather API call failed.'); } const weatherData = await response.json(); const temp = Math.round(weatherData.current.temperature_2m); const humidity = weatherData.current.relative_humidity_2m; const weatherCode = weatherData.current.weather_code; const iconChar = getWeatherIconFromCode(weatherCode); const mainCondition = getWeatherConditionFromCode(weatherCode); weatherTemp.textContent = `${temp}°C`; weatherIcon.textContent = iconChar; weatherLocation.textContent = name; weatherHumidity.textContent = `Humidity: ${humidity}%`; const state = findNearestState(lat, lon); updateHelplines(state); const data = generateDataForLocation(state, mainCondition); populateRow(hazardPredictionsDiv, data.predictions, renderers.prediction, 'tile-prediction'); populateRow(realTimeAlertsDiv, data.alerts, renderers.alert, 'tile-alert'); populateRow(armedForcesDiv, data.armedForces, renderers.resource, 'tile-resource'); populateRow(localResourcesDiv, data.localResources, renderers.resource, 'tile-resource'); renderDisasterSelector(getDisasterProbabilities(state)); } catch (error) { console.error("Error fetching weather data:", error); weatherTemp.textContent = "Error"; weatherIcon.textContent = "❗"; weatherLocation.textContent = "Could not fetch weather"; weatherHumidity.textContent = "Please try again."; const state = findNearestState(lat, lon); updateHelplines(state); const data = generateDataForLocation(state, 'default'); populateRow(hazardPredictionsDiv, data.predictions, renderers.prediction, 'tile-prediction'); populateRow(realTimeAlertsDiv, data.alerts, renderers.alert, 'tile-alert'); populateRow(armedForcesDiv, data.armedForces, renderers.resource, 'tile-resource'); populateRow(localResourcesDiv, data.localResources, renderers.resource, 'tile-resource'); renderDisasterSelector(getDisasterProbabilities(state)); } }
+
+        sendAlertBtn.onclick = () => alertModal.style.display = "block";
+        closeAlertModalBtn.onclick = () => alertModal.style.display = "none";
+        feedbackBtn.onclick = () => feedbackModal.style.display = "block";
+        closeFeedbackModalBtn.onclick = () => feedbackModal.style.display = "none";
+        
+        function openServiceModal(serviceType) { const currentLoc = weatherLocation.textContent; if (currentLoc === '--') { alert("Please select a location on the map first."); return; } const state = findNearestState(map.getCenter().lat, map.getCenter().lng); const helplines = STATE_HELPLINES[state] || STATE_HELPLINES.Default; let serviceName, helpline, icon, resourceName; if (serviceType === 'Ambulance') { serviceName = 'Ambulance Service'; helpline = helplines.health; icon = '🚑'; resourceName = 'Local Ambulance'; } else { serviceName = 'Fire Service'; helpline = helplines.fire; icon = '🚒'; resourceName = 'Fire Services'; } const resourceTile = Array.from(localResourcesDiv.children).find(tile => tile.querySelector('.tile-title').textContent.includes(resourceName)); const resourceStatus = resourceTile ? resourceTile.querySelector('.tag').textContent : 'Unknown'; serviceModalTitle.textContent = `Dispatch ${serviceName}`; serviceModalBody.innerHTML = `<p>Confirming dispatch for: <strong>${currentLoc}</strong></p><p>Local Helpline: <strong>${icon} ${helpline}</strong></p><h4>Unit Status:</h4><div class="resource-status-item"><span style="color: ${resourceStatus === 'Available' ? '#4caf50' : '#ffab00'};">●</span><div>${resourceName}: <strong>${resourceStatus}</strong></div></div>`; serviceModal.style.display = "block"; }
+        ambulanceBtn.onclick = () => openServiceModal('Ambulance');
+        fireServiceBtn.onclick = () => openServiceModal('Fire Service');
+        closeServiceModalBtn.onclick = () => serviceModal.style.display = "none";
+        window.onclick = event => { if (event.target == alertModal) alertModal.style.display = "none"; if (event.target == feedbackModal) feedbackModal.style.display = "none"; if (event.target == serviceModal) serviceModal.style.display = "none"; };
+        
+        alertForm.addEventListener('submit', function(e) { e.preventDefault(); const newAlert = { title: document.getElementById('alertTitle').value + " (Sent)", desc: document.getElementById('alertMessage').value }; const tile = createTile('tile-alert', renderers.alert(newAlert)); realTimeAlertsDiv.prepend(tile); alertModal.style.display = "none"; alertForm.reset(); alert("✅ Emergency Alert Broadcasted Successfully!"); });
+        feedbackForm.addEventListener('submit', function(e) { e.preventDefault(); feedbackModal.style.display = "none"; feedbackForm.reset(); alert("✅ Thank you for your feedback! It has been recorded."); });
+        setInterval(() => { const randomAlert = LIVE_ALERT_POOL[Math.floor(Math.random() * LIVE_ALERT_POOL.length)]; const tile = createTile('tile-alert', renderers.alert(randomAlert)); realTimeAlertsDiv.prepend(tile); if (realTimeAlertsDiv.children.length > 10) { realTimeAlertsDiv.removeChild(realTimeAlertsDiv.lastChild); } }, 15000);
+        map.on('click', e => { fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${e.latlng.lat}&lon=${e.latlng.lng}&zoom=18&addressdetails=1`).then(response => response.json()).then(data => { const city = data.address.city || data.address.town || data.address.village || 'Selected Area'; const state = data.address.state || 'Unknown State'; fetchInfoForLocation(e.latlng.lat, e.latlng.lng, `${city}, ${state}`); }).catch(error => { console.error("Error fetching location name:", error); fetchInfoForLocation(e.latlng.lat, e.latlng.lng); }); });
+
+        const toggleRadioBtn = document.getElementById('toggleRadioBtn');
+        const radioPanel = document.getElementById('radioPanel');
+        const radioStatus = document.getElementById('radioStatus');
+        const radioStationList = document.getElementById('radioStationList');
+        const stopRadioBtn = document.getElementById('stopRadioBtn');
+        const radioAudio = document.getElementById('radioAudio');
+        const radioNowPlaying = document.getElementById('radioNowPlaying');
+        let stationsLoaded = false;
+        function setRadioStatus(status, text) { radioStatus.className = `radio-status status-${status}`; radioStatus.innerHTML = `● ${text}`; }
+        async function fetchRadioStations() { if (stationsLoaded) return; setRadioStatus('loading', 'Loading...'); radioStationList.innerHTML = '<div class="station-item">Stations loading...</div>'; try { const response = await fetch('https://de1.api.radio-browser.info/json/stations/search?countrycode=IN&tag=news,talk&limit=25&hidebroken=true&order=clickcount&reverse=true'); const stations = await response.json(); radioStationList.innerHTML = ''; if(stations.length === 0) { radioStationList.innerHTML = '<div class="station-item">No stations found.</div>'; return; } stations.forEach(station => { const stationDiv = document.createElement('div'); stationDiv.className = 'station-item'; stationDiv.innerHTML = `<div class="station-name">${station.name}</div><div class="station-tags">${station.tags.replaceAll(',', ', ')}</div>`; stationDiv.addEventListener('click', () => { playStation(station.name, station.url_resolved); }); radioStationList.appendChild(stationDiv); }); stationsLoaded = true; setRadioStatus('online', 'Online'); } catch (error) { console.error("Failed to fetch radio stations:", error); radioStationList.innerHTML = '<div class="station-item">Failed to load stations.</div>'; setRadioStatus('offline', 'Error'); } }
+        function playStation(name, streamUrl) { radioAudio.src = streamUrl; radioAudio.play(); radioNowPlaying.textContent = `Now Playing: ${name}`; }
+        function stopRadio() { radioAudio.pause(); radioAudio.src = ''; radioNowPlaying.textContent = 'Select a station to play'; setRadioStatus('online', 'Online'); }
+        radioAudio.addEventListener('playing', () => setRadioStatus('playing', 'Playing'));
+        radioAudio.addEventListener('pause', () => setRadioStatus('online', 'Paused'));
+        radioAudio.addEventListener('error', () => { setRadioStatus('offline', 'Stream Error'); radioNowPlaying.textContent = 'Error playing station. Try another.'; });
+        toggleRadioBtn.addEventListener('click', () => { radioPanel.classList.toggle('show'); if (radioPanel.classList.contains('show')) { setRadioStatus('online', 'Online'); fetchRadioStations(); } else { stopRadio(); setRadioStatus('offline', 'Offline'); } });
+        stopRadioBtn.addEventListener('click', stopRadio);
+
+        const locationSearchForm = document.getElementById('locationSearchForm');
+        const locationSearchInput = document.getElementById('locationSearchInput');
+        locationSearchForm.addEventListener('submit', (event) => {
+            event.preventDefault();
+            const query = locationSearchInput.value.trim();
+            if (!query) return;
+            let searchQuery = query;
+            const isPincode = /^\d{6}$/.test(query);
+            if (isPincode) { searchQuery = query + ", India"; }
+            const apiUrl = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(searchQuery)}&format=json&limit=1`;
+            fetch(apiUrl)
+                .then(response => response.json())
+                .then(data => {
+                    if (data && data.length > 0) {
+                        const { lat, lon, display_name } = data[0];
+                        fetchInfoForLocation(lat, lon, display_name);
+                        locationSearchInput.value = '';
+                    } else { alert("Location not found. Please try again."); }
+                })
+                .catch(error => { console.error("Error during geocoding search:", error); alert("Could not search for the location. Please check your connection."); });
+        });
+        
+        const openChatbotBtn = document.getElementById('openChatbotBtn');
+        const chatbotContainer = document.getElementById('chatbotContainer');
+        const closeChatbotBtn = document.getElementById('closeChatbotBtn');
+        const chatbotMessages = document.getElementById('chatbotMessages');
+        const chatbotForm = document.getElementById('chatbotForm');
+        const chatbotInput = document.getElementById('chatbotInput');
+        openChatbotBtn.addEventListener('click', () => chatbotContainer.classList.add('show'));
+        closeChatbotBtn.addEventListener('click', () => chatbotContainer.classList.remove('show'));
+        function appendMessage(message, type) { const messageDiv = document.createElement('div'); messageDiv.className = `chat-message ${type}`; messageDiv.textContent = message; chatbotMessages.appendChild(messageDiv); chatbotMessages.scrollTop = chatbotMessages.scrollHeight; }
+        function getBotResponse(userInput) { const lowerCaseInput = userInput.toLowerCase(); let botResponse = "I'm sorry, I don't understand. You can ask me for 'ndrf', 'ambulance', 'fire', or 'helpline'."; const state = findNearestState(map.getCenter().lat, map.getCenter().lng); const helplines = STATE_HELPLINES[state] || STATE_HELPLINES.Default; if (lowerCaseInput.includes('ndrf')) { botResponse = `The NDRF helpline for ${state} is 🇮🇳 ${helplines.ndrf}.`; } else if (lowerCaseInput.includes('ambulance')) { botResponse = `The Ambulance / Health helpline for ${state} is 🚑 ${helplines.health}.`; } else if (lowerCaseInput.includes('fire') || lowerCaseInput.includes('aag')) { botResponse = `The Fire Service helpline for ${state} is 🚒 ${helplines.fire}.`; } else if (lowerCaseInput.includes('helpline')) { botResponse = `Here are the main helplines for ${state}:\n- NDRF: ${helplines.ndrf}\n- Ambulance: ${helplines.health}\n- Fire: ${helplines.fire}\n- State Emergency: ${helplines.emergency}`; } else if (lowerCaseInput.includes('hello') || lowerCaseInput.includes('hi') || lowerCaseInput.includes('namaste')) { botResponse = "Hello! I am the Suraksha Assistant. How can I help you? Try asking for 'help'."; } else if (lowerCaseInput.includes('help') || lowerCaseInput.includes('madad')) { botResponse = "You can ask me for the following helpline numbers:\n- 'ndrf'\n- 'ambulance'\n- 'fire'\n- 'helpline' for all numbers."; } setTimeout(() => { appendMessage(botResponse, 'bot'); }, 500); }
+        chatbotForm.addEventListener('submit', (e) => { e.preventDefault(); const userMessage = chatbotInput.value.trim(); if (!userMessage) return; appendMessage(userMessage, 'user'); chatbotInput.value = ''; getBotResponse(userMessage); });
+        appendMessage("Welcome to the Suraksha Assistant! Ask me for 'help' to see what I can do.", 'bot');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            populateRow(nationalWatchDiv, NATIONAL_WATCH_DATA, renderers.watch, 'tile-watch');
+            document.getElementById('copyright').textContent = `© ${new Date().getFullYear()} Project Suraksha. All Rights Reserved.`;
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const { latitude, longitude } = position.coords;
+                        fetchInfoForLocation(latitude, longitude, "Your Current Location");
+                    },
+                    (error) => {
+                        console.error("Geolocation failed:", error);
+                        fetchInfoForLocation(30.8040, 75.1691, 'Moga, Punjab');
+                    }
+                );
+            } else {
+                console.log("Geolocation is not supported by this browser.");
+                fetchInfoForLocation(30.8040, 75.1691, 'Moga, Punjab');
+            }
+        });
+    </script>
+</body>
+</html>
